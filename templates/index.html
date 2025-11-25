@@ -1,17 +1,11 @@
-<!--
-Secure File Storage System - Frontend (Fixed)
--->
-
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Secure File Storage System</title>
-    <!-- Tailwind via CDN for fast prototyping -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      /* small custom styles */
       .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(6px); }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Segoe UI Mono', monospace; }
     </style>
@@ -27,10 +21,8 @@ Secure File Storage System - Frontend (Fixed)
       </header>
 
       <main class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Left column: Auth and Upload -->
         <section class="lg:col-span-1 glass p-6 rounded-2xl shadow-md">
           <div id="authForms">
-            <!-- Register / Login forms inserted by JS -->
           </div>
 
           <hr class="my-4 border-slate-700" />
@@ -67,8 +59,7 @@ Secure File Storage System - Frontend (Fixed)
 
           </div>
         </section>
-
-        <!-- Right column: Files list -->
+        
         <section class="lg:col-span-2 glass p-6 rounded-2xl shadow-md">
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-medium">Your Files</h2>
@@ -107,16 +98,14 @@ Secure File Storage System - Frontend (Fixed)
 
 
     <script>
-    // ========== Configuration ==========
-    const API_BASE = '' // same origin
 
-    // ========== Utility Helpers ==========
+    const API_BASE = ''
+
     function el(id) { return document.getElementById(id); }
     function show(id) { el(id).classList.remove('hidden'); }
     function hide(id) { el(id).classList.add('hidden'); }
 
     function notify(msg, kind='info'){
-      // tiny toast-like notification
       const n = document.createElement('div');
       n.textContent = msg;
       n.className = 'fixed right-6 bottom-6 p-3 rounded shadow-lg text-sm z-50 ' + (
@@ -126,7 +115,6 @@ Secure File Storage System - Frontend (Fixed)
       setTimeout(()=> n.remove(), 4500);
     }
 
-    // ========== Auth Management ==========
     function token(){ return localStorage.getItem('sfs_token'); }
     function setToken(t){ if(t) localStorage.setItem('sfs_token', t); else localStorage.removeItem('sfs_token'); updateAuthArea(); }
 
@@ -145,7 +133,6 @@ Secure File Storage System - Frontend (Fixed)
       renderAuthForms();
     }
 
-    // ========== Render Auth Forms ==========
     function renderAuthForms(){
       const c = el('authForms');
       c.innerHTML = `
@@ -180,7 +167,6 @@ Secure File Storage System - Frontend (Fixed)
       el('showLoginBtn').addEventListener('click', renderAuthForms);
     }
 
-    // ========== Auth Handlers ==========
     async function loginHandler(){
       const u = el('li_username').value.trim();
       const p = el('li_password').value;
@@ -210,7 +196,6 @@ Secure File Storage System - Frontend (Fixed)
       }catch(err){ notify(err.message || 'Register error','error'); }
     }
 
-    // ========== File Encryption Helpers (Web Crypto) ==========
     async function deriveKeyFromPassphrase(passphrase, saltBase64, iterations=200000){
       const enc = new TextEncoder();
       const passKey = await crypto.subtle.importKey('raw', enc.encode(passphrase), {name:'PBKDF2'}, false, ['deriveKey']);
@@ -220,7 +205,7 @@ Secure File Storage System - Frontend (Fixed)
     }
 
     async function encryptFileWithPassphrase(file, passphrase){
-      const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV recommended for AES-GCM
+      const iv = crypto.getRandomValues(new Uint8Array(12));
       const {key, salt} = await deriveKeyFromPassphrase(passphrase, null);
       const arrayBuffer = await file.arrayBuffer();
       const cipherBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key, arrayBuffer);
@@ -234,7 +219,6 @@ Secure File Storage System - Frontend (Fixed)
       return new Blob([plain]);
     }
 
-    // ========== Upload Flow ==========
     el('encryptToggle').addEventListener('change', (e)=>{
       if(e.target.checked) el('passphraseBlock').classList.remove('hidden'); else el('passphraseBlock').classList.add('hidden');
     });
@@ -266,7 +250,6 @@ Secure File Storage System - Frontend (Fixed)
         if(iv) form.append('iv', iv);
         if(salt) form.append('salt', salt);
 
-        // show progress
         el('uploadProgress').classList.remove('hidden');
         el('uploadBar').style.width = '0%';
         el('uploadStatus').textContent = 'Uploading...';
@@ -289,7 +272,6 @@ Secure File Storage System - Frontend (Fixed)
       }catch(err){ console.error(err); notify('Upload error: '+err.message,'error'); el('uploadProgress').classList.add('hidden'); }
     });
 
-    // ========== File Listing & Actions ==========
     async function fetchFiles(){
       if(!token()){ el('filesArea').innerHTML = '<p class="text-sm text-slate-400">Sign in to view your files.</p>'; return; }
       try{
@@ -312,7 +294,6 @@ Secure File Storage System - Frontend (Fixed)
         const pill = tmp.querySelector('.encrypted-pill');
         pill.textContent = f.encrypted ? 'Encrypted' : 'Plain';
         
-        // FIX: Use array spread for classList.add to support multiple classes
         const pillClasses = f.encrypted ? ['bg-yellow-500', 'text-slate-900'] : ['bg-slate-700', 'text-slate-200'];
         pill.classList.add(...pillClasses);
 
@@ -336,19 +317,16 @@ Secure File Storage System - Frontend (Fixed)
       }catch(err){ notify(err.message || 'Delete error','error'); }
     }
 
-    // ========== Download Flow (with optional client-side decryption) ==========
     async function downloadFile(file){
       if(!token()){ notify('Login required','error'); return; }
       try{
-        // fetch file bytes as blob
         const res = await fetch(API_BASE + '/api/download/' + encodeURIComponent(file.id), { headers: { ...authHeaders() } });
         if(!res.ok) throw new Error('Download failed');
         const blob = await res.blob();
 
         if(file.encrypted){
-          // ask user for passphrase to decrypt
           const pass = prompt('File is encrypted. Enter your passphrase to decrypt locally:');
-          if(pass === null) return; // cancelled
+          if(pass === null) return;
           try{
             const ab = await blob.arrayBuffer();
             const iv = file.iv || prompt('Enter IV (base64) associated with file: (if stored on server it should be available in file metadata)');
@@ -372,11 +350,10 @@ Secure File Storage System - Frontend (Fixed)
       setTimeout(()=> URL.revokeObjectURL(url), 2000);
     }
 
-    // ========== Init ==========
     updateAuthArea();
-    // Auto-fetch files if logged in
     if(token()) fetchFiles();
 
     </script>
   </body>
+
 </html>
