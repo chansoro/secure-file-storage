@@ -25,43 +25,45 @@
           <div id="authForms">
           </div>
 
-          <hr class="my-4 border-slate-700" />
+          <div id="uploadSection" class="hidden"> 
+            <hr class="my-4 border-slate-700" />
+            
+            <div>
+              <h2 class="text-lg font-medium">Upload File</h2>
+              <p class="text-sm text-slate-400 mb-3">Choose a file and optionally encrypt it locally before sending to the server.</p>
 
-          <div>
-            <h2 class="text-lg font-medium">Upload File</h2>
-            <p class="text-sm text-slate-400 mb-3">Choose a file and optionally encrypt it locally before sending to the server.</p>
+              <label class="block text-sm mb-1">File</label>
+              <input id="fileInput" type="file" class="w-full text-sm text-slate-200 bg-slate-900 p-2 rounded" />
 
-            <label class="block text-sm mb-1">File</label>
-            <input id="fileInput" type="file" class="w-full text-sm text-slate-200 bg-slate-900 p-2 rounded" />
+              <label class="block text-sm mt-3">Filename (optional)</label>
+              <input id="filenameInput" type="text" placeholder="Keep original by leaving empty" class="w-full p-2 rounded bg-slate-900 text-slate-200 text-sm" />
 
-            <label class="block text-sm mt-3">Filename (optional)</label>
-            <input id="filenameInput" type="text" placeholder="Keep original by leaving empty" class="w-full p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+              <div class="mt-3">
+                <label class="inline-flex items-center">
+                  <input id="encryptToggle" type="checkbox" class="mr-2" />
+                  <span class="text-sm">Encrypt locally (AES-GCM, passphrase)</span>
+                </label>
+              </div>
 
-            <div class="mt-3">
-              <label class="inline-flex items-center">
-                <input id="encryptToggle" type="checkbox" class="mr-2" />
-                <span class="text-sm">Encrypt locally (AES-GCM, passphrase)</span>
-              </label>
+              <div id="passphraseBlock" class="mt-3 hidden">
+                <label class="text-sm">Passphrase</label>
+                <input id="passphraseInput" type="password" placeholder="Enter a strong passphrase" class="w-full p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+                <p class="text-xs text-slate-500 mt-1">We will derive an AES key from this passphrase (PBKDF2). The passphrase is not sent to the server.</p>
+              </div>
+
+              <button id="uploadBtn" class="mt-4 w-full bg-emerald-500 text-slate-900 font-semibold py-2 rounded hover:opacity-95">Upload</button>
+
+              <div id="uploadProgress" class="mt-3 hidden">
+                <div class="w-full bg-slate-700 h-3 rounded overflow-hidden"><div id="uploadBar" class="h-3 bg-emerald-400 w-0"></div></div>
+                <p id="uploadStatus" class="text-xs text-slate-400 mt-1"></p>
+              </div>
             </div>
-
-            <div id="passphraseBlock" class="mt-3 hidden">
-              <label class="text-sm">Passphrase</label>
-              <input id="passphraseInput" type="password" placeholder="Enter a strong passphrase" class="w-full p-2 rounded bg-slate-900 text-slate-200 text-sm" />
-              <p class="text-xs text-slate-500 mt-1">We will derive an AES key from this passphrase (PBKDF2). The passphrase is not sent to the server.</p>
-            </div>
-
-            <button id="uploadBtn" class="mt-4 w-full bg-emerald-500 text-slate-900 font-semibold py-2 rounded hover:opacity-95">Upload</button>
-
-            <div id="uploadProgress" class="mt-3 hidden">
-              <div class="w-full bg-slate-700 h-3 rounded overflow-hidden"><div id="uploadBar" class="h-3 bg-emerald-400 w-0"></div></div>
-              <p id="uploadStatus" class="text-xs text-slate-400 mt-1"></p>
-            </div>
-
           </div>
+
         </section>
-        
+
         <section class="lg:col-span-2 glass p-6 rounded-2xl shadow-md">
-          <div class="flex items-center justify-between mb-4">
+          <div id="fileListHeader" class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-medium">Your Files</h2>
             <div>
               <button id="refreshBtn" class="mr-2 px-3 py-1 rounded bg-slate-700 text-sm">Refresh</button>
@@ -72,7 +74,7 @@
           </div>
 
           <div id="filesArea">
-            <p class="text-sm text-slate-400">No files loaded yet. Click Refresh.</p>
+            <p class="text-sm text-slate-400">Sign in to view your files.</p>
           </div>
 
         </section>
@@ -105,6 +107,15 @@
     function show(id) { el(id).classList.remove('hidden'); }
     function hide(id) { el(id).classList.add('hidden'); }
 
+    function clearUploadForm(){
+      el('fileInput').value = ''; 
+      el('filenameInput').value = ''; 
+      el('passphraseInput').value = ''; 
+      if (!el('encryptToggle').checked) {
+          hide('passphraseBlock');
+      }
+    }
+
     function notify(msg, kind='info'){
       const n = document.createElement('div');
       n.textContent = msg;
@@ -116,25 +127,41 @@
     }
 
     function token(){ return localStorage.getItem('sfs_token'); }
-    function setToken(t){ if(t) localStorage.setItem('sfs_token', t); else localStorage.removeItem('sfs_token'); updateAuthArea(); }
+    function setToken(t){ 
+        if(t) localStorage.setItem('sfs_token', t); 
+        else localStorage.removeItem('sfs_token'); 
+        updateAuthArea();
+    }
 
     function authHeaders(){ const t = token(); return t ? { 'Authorization': 'Bearer '+t } : {}; }
 
     function updateAuthArea(){
       const area = el('authArea'); area.innerHTML = '';
+      const filesArea = el('filesArea');
+      
       if(token()){
         const b = document.createElement('div');
         b.innerHTML = `<div class="text-sm">Logged in</div><div class="text-xs text-slate-400">Token stored locally</div><div class=\"mt-2\"><button id=\"logoutBtn\" class=\"px-3 py-1 bg-rose-500 rounded text-sm\">Logout</button></div>`;
         area.appendChild(b);
         el('logoutBtn').addEventListener('click', ()=>{ setToken(null); notify('Logged out'); });
+        
+        show('uploadSection');
+        filesArea.innerHTML = '<p class="text-sm text-slate-400">Loading files...</p>';
+        fetchFiles();
       } else {
         area.innerHTML = `<div class=\"text-sm text-slate-300\">Not signed in</div>`;
+        
+        hide('uploadSection');
+        filesArea.innerHTML = '<p class="text-sm text-slate-400">Sign in to view your files.</p>';
       }
       renderAuthForms();
+      clearUploadForm();
     }
 
     function renderAuthForms(){
       const c = el('authForms');
+      if (token()) { c.innerHTML = ''; return; }
+      
       c.innerHTML = `
         <div class="mb-4">
           <div class="text-sm font-medium">Sign In</div>
@@ -177,7 +204,7 @@
         });
         if(!res.ok) throw new Error('Login failed');
         const data = await res.json();
-        if(data.token){ setToken(data.token); notify('Login successful'); fetchFiles(); }
+        if(data.token){ setToken(data.token); notify('Login successful'); }
         else throw new Error('Token missing');
       }catch(err){ notify(err.message || 'Login error','error'); }
     }
@@ -263,7 +290,11 @@
         };
         xhr.onload = ()=>{
           el('uploadProgress').classList.add('hidden');
-          if(xhr.status >=200 && xhr.status <300){ notify('Upload successful'); fetchFiles(); }
+          if(xhr.status >=200 && xhr.status <300){ 
+            notify('Upload successful'); 
+            fetchFiles();
+            clearUploadForm();
+          }
           else { notify('Upload failed','error'); console.error(xhr.responseText); }
         };
         xhr.onerror = ()=>{ el('uploadProgress').classList.add('hidden'); notify('Upload error','error'); };
@@ -309,7 +340,8 @@
     el('showEncryptedOnly').addEventListener('change', fetchFiles);
 
     async function deleteFile(fileId){
-      if(!confirm('Delete this file?')) return;
+
+      if(!prompt('Type DELETE to confirm deletion of this file:').toLowerCase() === 'delete') return;
       try{
         const res = await fetch(API_BASE + '/api/files/' + encodeURIComponent(fileId), { method: 'DELETE', headers: { ...authHeaders() } });
         if(!res.ok) throw new Error('Delete failed');
@@ -351,9 +383,7 @@
     }
 
     updateAuthArea();
-    if(token()) fetchFiles();
 
     </script>
   </body>
-
 </html>
