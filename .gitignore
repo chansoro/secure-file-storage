@@ -1,0 +1,13 @@
+
+*.db
+*.sqlite3
+
+uploads/
+
+pycache/
+*.py[cod]
+*$py.class
+
+venv/
+env/
+.env

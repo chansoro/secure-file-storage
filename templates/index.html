@@ -1,0 +1,382 @@
+<!--
+Secure File Storage System - Frontend (Fixed)
+-->
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Secure File Storage System</title>
+    <!-- Tailwind via CDN for fast prototyping -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* small custom styles */
+      .glass { background: rgba(255,255,255,0.04); backdrop-filter: blur(6px); }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Segoe UI Mono', monospace; }
+    </style>
+  </head>
+  <body class="bg-gradient-to-br from-slate-900 to-slate-800 min-h-screen text-slate-200">
+    <div class="max-w-6xl mx-auto p-6">
+      <header class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-2xl font-semibold">Secure File Storage System</h1>
+          <p class="text-sm text-slate-400">Encrypted file upload & retrieval — client-side optional AES-GCM encryption</p>
+        </div>
+        <div id="authArea" class="text-right"></div>
+      </header>
+
+      <main class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Left column: Auth and Upload -->
+        <section class="lg:col-span-1 glass p-6 rounded-2xl shadow-md">
+          <div id="authForms">
+            <!-- Register / Login forms inserted by JS -->
+          </div>
+
+          <hr class="my-4 border-slate-700" />
+
+          <div>
+            <h2 class="text-lg font-medium">Upload File</h2>
+            <p class="text-sm text-slate-400 mb-3">Choose a file and optionally encrypt it locally before sending to the server.</p>
+
+            <label class="block text-sm mb-1">File</label>
+            <input id="fileInput" type="file" class="w-full text-sm text-slate-200 bg-slate-900 p-2 rounded" />
+
+            <label class="block text-sm mt-3">Filename (optional)</label>
+            <input id="filenameInput" type="text" placeholder="Keep original by leaving empty" class="w-full p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+
+            <div class="mt-3">
+              <label class="inline-flex items-center">
+                <input id="encryptToggle" type="checkbox" class="mr-2" />
+                <span class="text-sm">Encrypt locally (AES-GCM, passphrase)</span>
+              </label>
+            </div>
+
+            <div id="passphraseBlock" class="mt-3 hidden">
+              <label class="text-sm">Passphrase</label>
+              <input id="passphraseInput" type="password" placeholder="Enter a strong passphrase" class="w-full p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+              <p class="text-xs text-slate-500 mt-1">We will derive an AES key from this passphrase (PBKDF2). The passphrase is not sent to the server.</p>
+            </div>
+
+            <button id="uploadBtn" class="mt-4 w-full bg-emerald-500 text-slate-900 font-semibold py-2 rounded hover:opacity-95">Upload</button>
+
+            <div id="uploadProgress" class="mt-3 hidden">
+              <div class="w-full bg-slate-700 h-3 rounded overflow-hidden"><div id="uploadBar" class="h-3 bg-emerald-400 w-0"></div></div>
+              <p id="uploadStatus" class="text-xs text-slate-400 mt-1"></p>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Right column: Files list -->
+        <section class="lg:col-span-2 glass p-6 rounded-2xl shadow-md">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-medium">Your Files</h2>
+            <div>
+              <button id="refreshBtn" class="mr-2 px-3 py-1 rounded bg-slate-700 text-sm">Refresh</button>
+              <label class="inline-flex items-center text-sm">
+                <input id="showEncryptedOnly" type="checkbox" class="mr-2" /> Encrypted only
+              </label>
+            </div>
+          </div>
+
+          <div id="filesArea">
+            <p class="text-sm text-slate-400">No files loaded yet. Click Refresh.</p>
+          </div>
+
+        </section>
+      </main>
+
+      <footer class="mt-6 text-xs text-slate-500">Client-side encryption uses AES-GCM with 12-byte IV and PBKDF2(SHA-256). Always keep passphrases safe — lost passphrase = lost file.</footer>
+    </div>
+
+
+    <template id="fileRowTemplate">
+      <div class="flex items-center justify-between p-3 rounded border border-slate-800 mb-2">
+        <div>
+          <div class="font-medium file-name">__NAME__</div>
+          <div class="text-xs text-slate-400 file-meta">__META__</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-1 rounded text-xs encrypted-pill"></span>
+          <button class="downloadBtn px-3 py-1 rounded bg-emerald-500 text-slate-900 text-sm">Download</button>
+          <button class="deleteBtn px-3 py-1 rounded bg-rose-600 text-slate-100 text-sm">Delete</button>
+        </div>
+      </div>
+    </template>
+
+
+    <script>
+    // ========== Configuration ==========
+    const API_BASE = '' // same origin
+
+    // ========== Utility Helpers ==========
+    function el(id) { return document.getElementById(id); }
+    function show(id) { el(id).classList.remove('hidden'); }
+    function hide(id) { el(id).classList.add('hidden'); }
+
+    function notify(msg, kind='info'){
+      // tiny toast-like notification
+      const n = document.createElement('div');
+      n.textContent = msg;
+      n.className = 'fixed right-6 bottom-6 p-3 rounded shadow-lg text-sm z-50 ' + (
+        kind === 'error' ? 'bg-rose-600 text-white' : 'bg-slate-700 text-slate-100'
+      );
+      document.body.appendChild(n);
+      setTimeout(()=> n.remove(), 4500);
+    }
+
+    // ========== Auth Management ==========
+    function token(){ return localStorage.getItem('sfs_token'); }
+    function setToken(t){ if(t) localStorage.setItem('sfs_token', t); else localStorage.removeItem('sfs_token'); updateAuthArea(); }
+
+    function authHeaders(){ const t = token(); return t ? { 'Authorization': 'Bearer '+t } : {}; }
+
+    function updateAuthArea(){
+      const area = el('authArea'); area.innerHTML = '';
+      if(token()){
+        const b = document.createElement('div');
+        b.innerHTML = `<div class="text-sm">Logged in</div><div class="text-xs text-slate-400">Token stored locally</div><div class=\"mt-2\"><button id=\"logoutBtn\" class=\"px-3 py-1 bg-rose-500 rounded text-sm\">Logout</button></div>`;
+        area.appendChild(b);
+        el('logoutBtn').addEventListener('click', ()=>{ setToken(null); notify('Logged out'); });
+      } else {
+        area.innerHTML = `<div class=\"text-sm text-slate-300\">Not signed in</div>`;
+      }
+      renderAuthForms();
+    }
+
+    // ========== Render Auth Forms ==========
+    function renderAuthForms(){
+      const c = el('authForms');
+      c.innerHTML = `
+        <div class="mb-4">
+          <div class="text-sm font-medium">Sign In</div>
+          <input id="li_username" placeholder="username" class="w-full mt-2 p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+          <input id="li_password" type="password" placeholder="password" class="w-full mt-2 p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+          <div class="flex gap-2 mt-2">
+            <button id="loginBtn" class="flex-1 py-2 rounded bg-sky-500 text-slate-900 font-semibold">Login</button>
+            <button id="showRegisterBtn" class="flex-1 py-2 rounded bg-slate-700 text-slate-200">Register</button>
+          </div>
+        </div>
+      `;
+      el('loginBtn').addEventListener('click', loginHandler);
+      el('showRegisterBtn').addEventListener('click', renderRegisterForm);
+    }
+
+    function renderRegisterForm(){
+      const c = el('authForms');
+      c.innerHTML = `
+        <div class="mb-4">
+          <div class="text-sm font-medium">Create Account</div>
+          <input id="reg_username" placeholder="username" class="w-full mt-2 p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+          <input id="reg_password" type="password" placeholder="password" class="w-full mt-2 p-2 rounded bg-slate-900 text-slate-200 text-sm" />
+          <div class="flex gap-2 mt-2">
+            <button id="registerBtn" class="flex-1 py-2 rounded bg-emerald-500 text-slate-900 font-semibold">Register</button>
+            <button id="showLoginBtn" class="flex-1 py-2 rounded bg-slate-700 text-slate-200">Back</button>
+          </div>
+        </div>
+      `;
+      el('registerBtn').addEventListener('click', registerHandler);
+      el('showLoginBtn').addEventListener('click', renderAuthForms);
+    }
+
+    // ========== Auth Handlers ==========
+    async function loginHandler(){
+      const u = el('li_username').value.trim();
+      const p = el('li_password').value;
+      if(!u||!p){ notify('Enter username and password','error'); return; }
+      try{
+        const res = await fetch(API_BASE + '/api/login', {
+          method: 'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({username:u,password:p})
+        });
+        if(!res.ok) throw new Error('Login failed');
+        const data = await res.json();
+        if(data.token){ setToken(data.token); notify('Login successful'); fetchFiles(); }
+        else throw new Error('Token missing');
+      }catch(err){ notify(err.message || 'Login error','error'); }
+    }
+
+    async function registerHandler(){
+      const u = el('reg_username').value.trim();
+      const p = el('reg_password').value;
+      if(!u||!p){ notify('Enter username and password','error'); return; }
+      try{
+        const res = await fetch(API_BASE + '/api/register', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({username:u,password:p})
+        });
+        if(!res.ok) throw new Error('Registration failed');
+        notify('Registration successful — you may now login');
+        renderAuthForms();
+      }catch(err){ notify(err.message || 'Register error','error'); }
+    }
+
+    // ========== File Encryption Helpers (Web Crypto) ==========
+    async function deriveKeyFromPassphrase(passphrase, saltBase64, iterations=200000){
+      const enc = new TextEncoder();
+      const passKey = await crypto.subtle.importKey('raw', enc.encode(passphrase), {name:'PBKDF2'}, false, ['deriveKey']);
+      const salt = saltBase64 ? Uint8Array.from(atob(saltBase64), c=>c.charCodeAt(0)) : crypto.getRandomValues(new Uint8Array(16));
+      const key = await crypto.subtle.deriveKey({name:'PBKDF2', salt: salt, iterations: iterations, hash:'SHA-256'}, passKey, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+      return {key, salt};
+    }
+
+    async function encryptFileWithPassphrase(file, passphrase){
+      const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV recommended for AES-GCM
+      const {key, salt} = await deriveKeyFromPassphrase(passphrase, null);
+      const arrayBuffer = await file.arrayBuffer();
+      const cipherBuf = await crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, key, arrayBuffer);
+      return {cipherBlob: new Blob([cipherBuf]), iv: btoa(String.fromCharCode(...iv)), salt: btoa(String.fromCharCode(...salt))};
+    }
+
+    async function decryptArrayBufferWithPassphrase(arrayBuffer, passphrase, ivBase64, saltBase64){
+      const iv = Uint8Array.from(atob(ivBase64), c=>c.charCodeAt(0));
+      const {key} = await deriveKeyFromPassphrase(passphrase, saltBase64);
+      const plain = await crypto.subtle.decrypt({name:'AES-GCM', iv: iv}, key, arrayBuffer);
+      return new Blob([plain]);
+    }
+
+    // ========== Upload Flow ==========
+    el('encryptToggle').addEventListener('change', (e)=>{
+      if(e.target.checked) el('passphraseBlock').classList.remove('hidden'); else el('passphraseBlock').classList.add('hidden');
+    });
+
+    el('uploadBtn').addEventListener('click', async ()=>{
+      const fInput = el('fileInput');
+      if(!fInput.files.length){ notify('Select a file first','error'); return; }
+      if(!token()){ notify('Login required','error'); return; }
+      const file = fInput.files[0];
+      const filename = el('filenameInput').value.trim() || file.name;
+      const encrypt = el('encryptToggle').checked;
+      let payloadFile = file;
+      let iv=null, salt=null;
+
+      try{
+        if(encrypt){
+          const pass = el('passphraseInput').value;
+          if(!pass){ notify('Enter passphrase for encryption','error'); return; }
+          notify('Encrypting locally...');
+          const res = await encryptFileWithPassphrase(file, pass);
+          payloadFile = res.cipherBlob;
+          iv = res.iv; salt = res.salt;
+        }
+
+        const form = new FormData();
+        form.append('file', payloadFile, filename);
+        form.append('filename', filename);
+        form.append('encrypted', encrypt ? 'true' : 'false');
+        if(iv) form.append('iv', iv);
+        if(salt) form.append('salt', salt);
+
+        // show progress
+        el('uploadProgress').classList.remove('hidden');
+        el('uploadBar').style.width = '0%';
+        el('uploadStatus').textContent = 'Uploading...';
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', API_BASE + '/api/upload', true);
+        const headers = authHeaders();
+        if(headers.Authorization) xhr.setRequestHeader('Authorization', headers.Authorization);
+        xhr.upload.onprogress = (e)=>{
+          if(e.lengthComputable){ const pct = Math.round((e.loaded / e.total) * 100); el('uploadBar').style.width = pct + '%'; }
+        };
+        xhr.onload = ()=>{
+          el('uploadProgress').classList.add('hidden');
+          if(xhr.status >=200 && xhr.status <300){ notify('Upload successful'); fetchFiles(); }
+          else { notify('Upload failed','error'); console.error(xhr.responseText); }
+        };
+        xhr.onerror = ()=>{ el('uploadProgress').classList.add('hidden'); notify('Upload error','error'); };
+        xhr.send(form);
+
+      }catch(err){ console.error(err); notify('Upload error: '+err.message,'error'); el('uploadProgress').classList.add('hidden'); }
+    });
+
+    // ========== File Listing & Actions ==========
+    async function fetchFiles(){
+      if(!token()){ el('filesArea').innerHTML = '<p class="text-sm text-slate-400">Sign in to view your files.</p>'; return; }
+      try{
+        const res = await fetch(API_BASE + '/api/files', { headers: { ...authHeaders() } });
+        if(!res.ok) throw new Error('Failed to load files');
+        const files = await res.json();
+        renderFiles(files);
+      }catch(err){ notify(err.message || 'Error fetching files','error'); }
+    }
+
+    function renderFiles(files){
+      const showEncryptedOnly = el('showEncryptedOnly').checked;
+      const area = el('filesArea'); area.innerHTML = '';
+      if(!files.length){ area.innerHTML = '<p class="text-sm text-slate-400">No files stored yet.</p>'; return; }
+      files.filter(f => !showEncryptedOnly || f.encrypted).forEach(f => {
+        const tmp = document.getElementById('fileRowTemplate').content.cloneNode(true);
+        tmp.querySelector('.file-name').textContent = f.filename;
+        tmp.querySelector('.file-meta').textContent = `${(f.size/1024).toFixed(2)} KB • ${new Date(f.uploaded_at).toLocaleString()}`;
+        
+        const pill = tmp.querySelector('.encrypted-pill');
+        pill.textContent = f.encrypted ? 'Encrypted' : 'Plain';
+        
+        // FIX: Use array spread for classList.add to support multiple classes
+        const pillClasses = f.encrypted ? ['bg-yellow-500', 'text-slate-900'] : ['bg-slate-700', 'text-slate-200'];
+        pill.classList.add(...pillClasses);
+
+        const dlBtn = tmp.querySelector('.downloadBtn');
+        dlBtn.addEventListener('click', ()=> downloadFile(f));
+        const delBtn = tmp.querySelector('.deleteBtn');
+        delBtn.addEventListener('click', ()=> deleteFile(f.id));
+        area.appendChild(tmp);
+      });
+    }
+
+    el('refreshBtn').addEventListener('click', fetchFiles);
+    el('showEncryptedOnly').addEventListener('change', fetchFiles);
+
+    async function deleteFile(fileId){
+      if(!confirm('Delete this file?')) return;
+      try{
+        const res = await fetch(API_BASE + '/api/files/' + encodeURIComponent(fileId), { method: 'DELETE', headers: { ...authHeaders() } });
+        if(!res.ok) throw new Error('Delete failed');
+        notify('Deleted'); fetchFiles();
+      }catch(err){ notify(err.message || 'Delete error','error'); }
+    }
+
+    // ========== Download Flow (with optional client-side decryption) ==========
+    async function downloadFile(file){
+      if(!token()){ notify('Login required','error'); return; }
+      try{
+        // fetch file bytes as blob
+        const res = await fetch(API_BASE + '/api/download/' + encodeURIComponent(file.id), { headers: { ...authHeaders() } });
+        if(!res.ok) throw new Error('Download failed');
+        const blob = await res.blob();
+
+        if(file.encrypted){
+          // ask user for passphrase to decrypt
+          const pass = prompt('File is encrypted. Enter your passphrase to decrypt locally:');
+          if(pass === null) return; // cancelled
+          try{
+            const ab = await blob.arrayBuffer();
+            const iv = file.iv || prompt('Enter IV (base64) associated with file: (if stored on server it should be available in file metadata)');
+            const salt = file.salt || prompt('Enter salt (base64) associated with file:');
+            if(!iv || !salt){ notify('IV and salt are required to decrypt','error'); return; }
+            const plainBlob = await decryptArrayBufferWithPassphrase(ab, pass, iv, salt);
+            saveBlob(plainBlob, file.filename.replace(/\.enc$/,'') );
+            notify('Download & decryption complete');
+          }catch(err){ console.error(err); notify('Decryption failed: '+err.message,'error'); }
+        } else {
+          saveBlob(blob, file.filename);
+          notify('Download complete');
+        }
+      }catch(err){ console.error(err); notify(err.message || 'Download error','error'); }
+    }
+
+    function saveBlob(blob, filename){
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=> URL.revokeObjectURL(url), 2000);
+    }
+
+    // ========== Init ==========
+    updateAuthArea();
+    // Auto-fetch files if logged in
+    if(token()) fetchFiles();
+
+    </script>
+  </body>
+</html>
