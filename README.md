@@ -16,8 +16,8 @@
 
   1. Clone the repository (or download the files):
 
-    git clone [https://github.com/YOUR_USERNAME/secure-file-vault.git](https://github.com/YOUR_USERNAME/secure-file-vault.git)
-    cd secure-file-vault
+    git clone https://github.com/YOUR_USERNAME/secure-file-storage.git
+    cd secure-file-storage
 
 
   2. Install Dependencies:
@@ -56,3 +56,4 @@ _Frontend_: HTML5, Tailwind CSS, Vanilla JavaScript
 _Backend_: Python 3, Flask, SQLAlchemy
 
 _Database_: SQLite
+
