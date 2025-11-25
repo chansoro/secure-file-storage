@@ -11,7 +11,7 @@ from functools import wraps
 
 # Configuration
 app = Flask(__name__, static_folder='static', template_folder='templates')
-app.config['SECRET_KEY'] = 'your_secret_key_here_change_me' # Change this in production!
+app.config['SECRET_KEY'] = 'your_secret_key_here_change_me' 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
@@ -48,7 +48,6 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        # Check header: Authorization: Bearer <token>
         if 'Authorization' in request.headers:
             auth_header = request.headers['Authorization']
             if auth_header.startswith('Bearer '):
@@ -70,8 +69,6 @@ def token_required(f):
 
 @app.route('/')
 def index():
-    # Serves the frontend if placed in templates/index.html
-    # Since the user provided a standalone HTML file, this connects it.
     return render_template('index.html') 
 
 @app.route('/api/register', methods=['POST'])
@@ -135,8 +132,8 @@ def upload_file(current_user):
     # Create DB Record
     new_file = FileRecord(
         user_id=current_user.id,
-        filename=custom_filename, # Store the original/custom name for display
-        filepath=safe_filename,   # Store the safe name for retrieval
+        filename=custom_filename,
+        filepath=safe_filename,  
         size=file_size,
         encrypted=is_encrypted,
         iv=iv,
@@ -201,4 +198,5 @@ with app.app_context():
     db.create_all()
 
 if __name__ == '__main__':
+
     app.run(debug=True, port=5000)
