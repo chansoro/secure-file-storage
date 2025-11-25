@@ -342,7 +342,10 @@
 
     async function deleteFile(fileId){
 
-      if(!prompt('Type DELETE to confirm deletion of this file:').toLowerCase() === 'delete') return;
+      const confirmation = prompt('Type DELETE to confirm deletion of this file:');
+      if (confirmation === null || confirmation.toLowerCase() !== 'delete') {
+        return;
+      }
       try{
         const res = await fetch(API_BASE + '/api/files/' + encodeURIComponent(fileId), { method: 'DELETE', headers: { ...authHeaders() } });
         if(!res.ok) throw new Error('Delete failed');
@@ -388,5 +391,6 @@
     </script>
   </body>
 </html>
+
 
 
